@@ -1,6 +1,6 @@
 import React from 'react';
 import './App.css';
-import { Main } from './Main';
+import { MediaAndVisuals } from './MediaAndVisuals';
 import { Link, Switch, Route, BrowserRouter as Router } from 'react-router-dom';
 
 function App() {
@@ -17,8 +17,11 @@ function App() {
                 </ul>
         <header className="App-header">
           <Switch>
+              <Route path="/main/:useMockImage/">
+                <MediaAndVisuals useMockImage={true} />
+              </Route>
               <Route path="/main">
-                <Main />
+                <MediaAndVisuals useMockImage={false} />
               </Route>
               <Route path="/">
                 <div>This is Root</div>
