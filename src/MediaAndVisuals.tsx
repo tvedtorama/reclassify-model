@@ -41,7 +41,7 @@ export const MediaAndVisuals = ({useMockImage}: {useMockImage: boolean}) => Some
 		mockStatePair: useState(Math.floor(Math.random() * 1.99)),
 		imageRefs: [useRef<HTMLImageElement>(null), useRef<HTMLImageElement>(null)],
 		browserHistory: useHistory(),
-		mobileNet: useState<MobileNet | null>(null),
+		mobileNet: useState<MobileNet | null | false>(null),
 		mobileNetLoadPromise: useMemo(loadMobileNet, []),
 		canvasEvents: useMemo(() => new EventEmitter(), []),
 	}).map(({dataState: [dataState, setDataState], browserHistory, mobileNet, ...rest}) => ({
@@ -49,10 +49,14 @@ export const MediaAndVisuals = ({useMockImage}: {useMockImage: boolean}) => Some
 		redirectToConfirm: redirectToConfirm(browserHistory),
 		loadHookEffect: useEffect(() => {
 			rest.mobileNetLoadPromise.then((net) => {
-//				rest.stateThings[1]("LOADED")
+//				The model loading business should have it's own state logic, see below
 				mobileNet[1](net)
+			}).catch(err => {
+				console.error("Error loading mobile net", err)
+				mobileNet[1](false)
 			})}, []),
 		dataState,
+		modelLoadError: mobileNet[0] === false,
 		...rest,
 	})).map(({videoRef, canvasRef, imageRefs, mockStatePair: [mockState], classifier, canvasEvents, ...rest}) => ({
 		registerMediaStreamAndAnimSeq: useEffect(() => {
@@ -117,9 +121,11 @@ export const MediaAndVisuals = ({useMockImage}: {useMockImage: boolean}) => Some
 		canvasRef,
 		imageRefs
 	}))
-	.map(({stateThings: [state], videoRef, imageRefs, canvasRef, dataState, redirectToConfirm}) => 
+	.map(({stateThings: [state], videoRef, imageRefs, canvasRef, dataState, redirectToConfirm, modelLoadError}) => 
 		state === "FAILED" ?
 			<div style={{color: "orange", margin: "2em"}}><span role={"img"} aria-label="video-issue">🎥</span> Unable to access video stream (please make sure you have a webcam enabled)</div> :
+		modelLoadError ?
+			<div style={{color: "orange", margin: "2em"}}>Failed to load AI model</div> :
 			<div style={{display: "flex", flexDirection: "column"}}>
 				<video ref={videoRef} style={{display: "none"}} />
 				{useMockImage && renderImages(imageRefs, [mockImageSuccess, mockImageFailure])}
