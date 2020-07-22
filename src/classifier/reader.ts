@@ -20,6 +20,7 @@ interface IPrelimResult {
 interface IMatchStats {firstMatch: number, lastMatch: number, match: IPrelimResult | null}
 
 const timeoutSeconds = 5
+const lostHitUseLastTimeout = 500
 
 /* Used as accumulator with scan to keep matches a short while after the algorithm ceases to see the code. This is useful to with a countdown. */
 export const keepLastHitWhenCloseInTime = (timeout: number, rightNow = () => +new Date()) =>
@@ -36,7 +37,7 @@ export const keepLastHitWhenCloseInTime = (timeout: number, rightNow = () => +ne
 const pickResults = (res: {className: string, probability: number}[]) => {
 //	console.log(res)
 //  Absolutely impossible to get chrome to break on this.  Moved to separate function, added brackets - no luck....  Helps to re-open the dev panel.
-	return 	Maybe.fromFalsy(res.length && res[0])
+	return 	Maybe.fromFalsy(res.length && res[0].probability > 0.5 && res[0])
 }
 
 export const createClassifier = (mobileNet: MobileNet, onResults: (result: IResultOptions) => void) =>
@@ -58,7 +59,7 @@ export const createClassifier = (mobileNet: MobileNet, onResults: (result: IResu
 						matchTime: +new Date(),
 					})
 				),
-				scan(keepLastHitWhenCloseInTime(500), {firstMatch: -1, lastMatch: -1, match: <IPrelimResult | null>null})
+				scan(keepLastHitWhenCloseInTime(lostHitUseLastTimeout), {firstMatch: -1, lastMatch: -1, match: <IPrelimResult | null>null})
 			),
 			interval(200)
 		]).pipe(
