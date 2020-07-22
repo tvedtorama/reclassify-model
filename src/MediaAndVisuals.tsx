@@ -25,7 +25,7 @@ const polygonPath = (polygon: {x: number, y: number}[]) =>
 	"M" + [...polygon, polygon[0]].map(({x, y}) => `${x},${y} `).join()
 
 const redirectToConfirm = (history: H.History<H.History.PoorMansUnknown>) => (r: IResult, ) =>
-	history.push(`../confirm/${r.data.customer}/${r.data.fraction}/test_room/`)
+	history.push(`../confirm/${r.data.className}/${r.data.probability}/test_room/`)
 
 const handleSetStateAndTimeoutRedirect = (setDataState: (s: IResult | false) => void, history: H.History<H.History.PoorMansUnknown>) =>
 	(s: IResult | false) => 
@@ -133,7 +133,7 @@ export const MediaAndVisuals = ({useMockImage}: {useMockImage: boolean}) => Some
 					Note: Assumes 640x480 is same aspect as video stream, if this assumption fails, the result will be stretched */ }
 				<canvas ref={canvasRef} width={`${640}px`} height={`${480}px`} />
 				{dataState && [
-					<span key="s">Customer: {dataState.data.customer}, Fraction: {dataState.data.fraction}</span>,
+					<span key="s">Class: {dataState.data.className}, Prob: {dataState.data.probability.toPrecision(2)}</span>,
 					<button key="a" onClick={() => redirectToConfirm(dataState)} style={{margin: "auto", marginTop: "1em"}}>Use ({dataState.timeout}s)</button>
 				]}
 			</div>).some()

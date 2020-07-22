@@ -5,7 +5,7 @@ import { MobileNet } from "@tensorflow-models/mobilenet"
 
 export interface IResult {
 	timeout: number,
-	data: {customer: string, fraction: string}
+	data: {className: string, probability: number}
 	polygon: {x: number, y: number}[]
 }
 
@@ -13,8 +13,8 @@ type IResultOptions = IResult | false
 
 interface IPrelimResult {
 	code: {location: any}
-	customer: string
-	fraction: string
+	className: string
+	probability: number
 	matchTime: number
 }
 interface IMatchStats {firstMatch: number, lastMatch: number, match: IPrelimResult | null}
@@ -25,7 +25,7 @@ const timeoutSeconds = 5
 export const keepLastHitWhenCloseInTime = (timeout: number, rightNow = () => +new Date()) =>
 	(acc: IMatchStats, matchMaybe: Maybe<IPrelimResult>) => matchMaybe
 	.map(match => ({
-		firstMatch: acc.match?.customer === match?.customer && acc.firstMatch > 0 ? acc.firstMatch : match.matchTime,
+		firstMatch: acc.match?.className === match?.className && acc.firstMatch > 0 ? acc.firstMatch : match.matchTime,
 		lastMatch: match.matchTime,
 		match: <IPrelimResult | null>match,
 	}))
@@ -47,8 +47,6 @@ export const createClassifier = (mobileNet: MobileNet, onResults: (result: IResu
 				mergeMap(async imageData => Some(await mobileNet.classify(imageData))
 					.flatMap(pickResults)
 					.map(code => ({code}))
-/*					.flatMap(({code, regex}) => Maybe.fromFalsy(regex)
-						.map(regex => ({code, regex}))) */
 					.map(({code}) => <IPrelimResult>{
 						code: {location: {
 							topLeftCorner: {x: 0, y: 0},
@@ -56,8 +54,7 @@ export const createClassifier = (mobileNet: MobileNet, onResults: (result: IResu
 							bottomLeftCorner: {x: 0, y: 480},
 							bottomRightCorner: {x: 640, y: 480},
 						}},
-						customer: code.className,
-						fraction: null,
+						...code, // class and prob
 						matchTime: +new Date(),
 					})
 				),
@@ -78,9 +75,9 @@ export const createClassifier = (mobileNet: MobileNet, onResults: (result: IResu
 	}))
 	.map(({parses$, readerInterface}) => {
 		const subscription = parses$.subscribe(({match, timeout}) => match ?
-			(({code, customer, fraction}: IPrelimResult) => onResults({
+			(({code, className, probability}: IPrelimResult) => onResults({
 				timeout,
-				data: {customer, fraction},
+				data: {className, probability},
 				polygon: [
 					code.location.topLeftCorner,
 					code.location.topRightCorner,
