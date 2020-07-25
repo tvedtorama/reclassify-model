@@ -2,6 +2,7 @@ import { Maybe, Some } from "monet"
 import {Subject, combineLatest, interval} from 'rxjs'
 import {map, scan, filter, mergeMap} from 'rxjs/operators/index'
 import { MobileNet } from "@tensorflow-models/mobilenet"
+import { createImageNetCore } from "./imageNetCore"
 
 export interface IResult {
 	timeout: number,
@@ -21,6 +22,8 @@ interface IMatchStats {firstMatch: number, lastMatch: number, match: IPrelimResu
 
 const timeoutSeconds = 5
 const lostHitUseLastTimeout = 500
+/** Minimum probability for considering the item a hit */
+const probabilityThreshold = 0.5
 
 /* Used as accumulator with scan to keep matches a short while after the algorithm ceases to see the code. This is useful to with a countdown. */
 export const keepLastHitWhenCloseInTime = (timeout: number, rightNow = () => +new Date()) =>
@@ -34,18 +37,25 @@ export const keepLastHitWhenCloseInTime = (timeout: number, rightNow = () => +ne
 		Maybe.Some(acc) : Maybe.some({firstMatch: -1, lastMatch: -1, match: null}))
 	.some()
 
-const pickResults = (res: {className: string, probability: number}[]) => {
+interface IClassifyResult {className: string, probability: number}
+
+const pickResults = (res: IClassifyResult[]) => {
 //	console.log(res)
 //  Absolutely impossible to get chrome to break on this.  Moved to separate function, added brackets - no luck....  Helps to re-open the dev panel.
-	return 	Maybe.fromFalsy(res.length && res[0].probability > 0.5 && res[0])
+	return 	Maybe.fromFalsy(res.length && res[0].probability > probabilityThreshold && res[0])
 }
 
-export const createClassifier = (mobileNet: MobileNet, onResults: (result: IResultOptions) => void) =>
-	Some(new Subject<ImageData>())
-	.map(subject$ => ({
+export interface IClassifierCore {
+	classify: (imageData: ImageData) => Promise<IClassifyResult[]>
+	addExample: (imageData: ImageData, classCode: number) => void
+}
+
+export const createClassifier = (mobileNet: MobileNet, onResults: (result: IResultOptions) => void, core = () => createImageNetCore(mobileNet)) =>
+	Some({subject$: new Subject<ImageData>(), core: core()})
+	.map(({subject$, core}) => ({
 		subject$,
 		parses$: combineLatest([subject$.pipe(
-				mergeMap(async imageData => Some(await mobileNet.classify(imageData))
+				mergeMap(async imageData => Some(await core.classify(imageData))
 					.flatMap(pickResults)
 					.map(code => ({code}))
 					.map(({code}) => <IPrelimResult>{
@@ -71,6 +81,12 @@ export const createClassifier = (mobileNet: MobileNet, onResults: (result: IResu
 	.map(({subject$, parses$}) => ({
 		readerInterface: {
 			addFrame: (imageData: ImageData) => subject$.next(imageData)
+			// New method here, which uses adds to another stream, which is combined
+			//  with the other one to make classifications.  The logic should then
+			//  return both the MobileNet prediction - and the new classification?
+			//    No, switch modes.  The new classifier can be present at all times
+			//    but the methods to use should depend on the mode.
+			//  The mode to use should be a separate module / plugin
 		},
 		parses$
 	}))
