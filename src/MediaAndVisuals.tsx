@@ -7,6 +7,7 @@ import mockImageSuccess from './mockImages/success.jpg';
 import mockImageFailure from './mockImages/failure.jpg';
 import { EventEmitter } from "events";
 import { load as loadMobileNet, MobileNet } from "@tensorflow-models/mobilenet";
+import { createCustomClassifierCore } from "./classifier/customClassifierCore";
 
 type ICanvasState = {width: number, height: number}
 
@@ -33,19 +34,28 @@ const handleSetStateAndTimeoutRedirect = (setDataState: (s: IResult | false) => 
 			.filter(r => r.timeout === 0)
 			.cata(() => setDataState(s), /* redirectToConfirm(history) */ (console.log("redirect!"), () => undefined))
 	
+const mockImageCount = 2
+const selectMockState = () => Math.floor(Math.random() * mockImageCount - 0.001)
+
 export const MediaAndVisuals = ({useMockImage}: {useMockImage: boolean}) => Some({
 		stateThings: useState<"INIT" | "WAIT" | "FAILED" | "STREAMING">("INIT"),
 		dataState: useState<IResult | false>(false),
 		videoRef: useRef<HTMLVideoElement>(null),
 		canvasRef: useRef<HTMLCanvasElement>(null),
-		mockStatePair: useState(Math.floor(Math.random() * 1.99)),
+		mockStatePair: useState(selectMockState()),
 		imageRefs: [useRef<HTMLImageElement>(null), useRef<HTMLImageElement>(null)],
 		browserHistory: useHistory(),
 		mobileNet: useState<MobileNet | null | false>(null),
 		mobileNetLoadPromise: useMemo(loadMobileNet, []),
 		canvasEvents: useMemo(() => new EventEmitter(), []),
 	}).map(({dataState: [dataState, setDataState], browserHistory, mobileNet, ...rest}) => ({
-		classifier: useMemo(() => mobileNet[0] ? createClassifier(mobileNet[0], handleSetStateAndTimeoutRedirect(setDataState, browserHistory)) : null, [mobileNet[0]]),
+		classifier: useMemo(() => mobileNet[0] ?
+			Some(mobileNet[0]).map(model =>
+				createClassifier(model, 
+					handleSetStateAndTimeoutRedirect(setDataState, browserHistory),
+					() => createCustomClassifierCore(model, {"0": "A", "1": "B", "2": "C"})
+				)).some()
+			: null, [mobileNet[0]]),
 		redirectToConfirm: redirectToConfirm(browserHistory),
 		loadHookEffect: useEffect(() => {
 			rest.mobileNetLoadPromise.then((net) => {
@@ -58,7 +68,7 @@ export const MediaAndVisuals = ({useMockImage}: {useMockImage: boolean}) => Some
 		dataState,
 		modelLoadError: mobileNet[0] === false,
 		...rest,
-	})).map(({videoRef, canvasRef, imageRefs, mockStatePair: [mockState], classifier, canvasEvents, ...rest}) => ({
+	})).map(({videoRef, canvasRef, imageRefs, mockStatePair: [mockState, setMockState], classifier, canvasEvents, ...rest}) => ({
 		registerMediaStreamAndAnimSeq: useEffect(() => {
 			if (!classifier) {
 				// This ugliness is here as we load the model first (wait for classifier), then hook up the animate sequence.  Could have separate process that waits for video init and model init and then sets up animation.
@@ -101,7 +111,7 @@ export const MediaAndVisuals = ({useMockImage}: {useMockImage: boolean}) => Some
 				})
 		  
 			return () => (animRequest && (cancelAnimationFrame(animRequest), undefined)) || undefined;
-		  }, [classifier]),
+		  }, [classifier, mockState]),
 		unsubscribe: useEffect(() => () => classifier && classifier.unsubscribe(), []),
 		paintPolygon: useEffect(() => Maybe.fromFalsy((ctx: CanvasRenderingContext2D) => {
 				if (!(rest.dataState && rest.dataState.polygon?.length))
@@ -119,9 +129,11 @@ export const MediaAndVisuals = ({useMockImage}: {useMockImage: boolean}) => Some
 		...rest,
 		videoRef,
 		canvasRef,
-		imageRefs
+		imageRefs,
+		classifier,
+		setMockState,
 	}))
-	.map(({stateThings: [state], videoRef, imageRefs, canvasRef, dataState, redirectToConfirm, modelLoadError}) => 
+	.map(({stateThings: [state], videoRef, imageRefs, canvasRef, dataState, redirectToConfirm, modelLoadError, classifier, setMockState}) => 
 		state === "FAILED" ?
 			<div style={{color: "orange", margin: "2em"}}><span role={"img"} aria-label="video-issue">🎥</span> Unable to access video stream (please make sure you have a webcam enabled)</div> :
 		modelLoadError ?
@@ -132,6 +144,10 @@ export const MediaAndVisuals = ({useMockImage}: {useMockImage: boolean}) => Some
 				{ /* Insane error here: used style (CSS) width/height, instead of plain w/h.  This led to some crazy scaling that was impossible to understand.  Look up "300x150" for an explanation. 
 					Note: Assumes 640x480 is same aspect as video stream, if this assumption fails, the result will be stretched */ }
 				<canvas ref={canvasRef} width={`${640}px`} height={`${480}px`} />
+				<button onClick={() => classifier.addExample(0)}>A</button>
+				<button onClick={() => classifier.addExample(1)}>B</button>
+				<button onClick={() => classifier.addExample(2)}>C</button>
+				{useMockImage && <button onClick={() => setMockState(selectMockState())}>Switch image</button>}
 				{dataState && [
 					<span key="s">Class: {dataState.data.className}, Prob: {dataState.data.probability.toPrecision(2)}</span>,
 					<button key="a" onClick={() => redirectToConfirm(dataState)} style={{margin: "auto", marginTop: "1em"}}>Use ({dataState.timeout}s)</button>

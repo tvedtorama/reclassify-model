@@ -1,5 +1,5 @@
 import { Maybe, Some } from "monet"
-import {Subject, combineLatest, interval} from 'rxjs'
+import {Subject, combineLatest, zip, interval} from 'rxjs'
 import {map, scan, filter, mergeMap} from 'rxjs/operators/index'
 import { MobileNet } from "@tensorflow-models/mobilenet"
 import { createImageNetCore } from "./imageNetCore"
@@ -51,10 +51,11 @@ export interface IClassifierCore {
 }
 
 export const createClassifier = (mobileNet: MobileNet, onResults: (result: IResultOptions) => void, core = () => createImageNetCore(mobileNet)) =>
-	Some({subject$: new Subject<ImageData>(), core: core()})
-	.map(({subject$, core}) => ({
+	Some({subject$: new Subject<ImageData>(), examples$: new Subject<number>(), core: core()})
+	.map(({subject$, examples$, core}) => ({
 		subject$,
-		parses$: combineLatest([subject$.pipe(
+		examples$,
+		parses$: combineLatest(subject$.pipe(
 				mergeMap(async imageData => Some(await core.classify(imageData))
 					.flatMap(pickResults)
 					.map(code => ({code}))
@@ -72,25 +73,23 @@ export const createClassifier = (mobileNet: MobileNet, onResults: (result: IResu
 				scan(keepLastHitWhenCloseInTime(lostHitUseLastTimeout), {firstMatch: -1, lastMatch: -1, match: <IPrelimResult | null>null})
 			),
 			interval(200)
-		]).pipe(
+		).pipe(
 			map(([a, _t]) => a.firstMatch > 0 ? {...a, timeout: Math.max(0, Math.round((a.firstMatch + timeoutSeconds * 1000 - +new Date()) / 1000))} : {...a, timeout: -1}),
 			scan<IMatchStats & {timeout: number} & {duplicate?: boolean}>((acc, val) => ({...val, duplicate: acc.timeout === val.timeout})),
 			filter(val => !val.duplicate)
-		)
+		),
+		exampleProcessing$: zip(subject$, examples$)
+			.pipe(
+				map(([frame, example]) => core.addExample(frame, example)))
 	}))
-	.map(({subject$, parses$}) => ({
+	.map(({subject$, examples$, ...rest}) => ({
 		readerInterface: {
-			addFrame: (imageData: ImageData) => subject$.next(imageData)
-			// New method here, which uses adds to another stream, which is combined
-			//  with the other one to make classifications.  The logic should then
-			//  return both the MobileNet prediction - and the new classification?
-			//    No, switch modes.  The new classifier can be present at all times
-			//    but the methods to use should depend on the mode.
-			//  The mode to use should be a separate module / plugin
+			addFrame: (imageData: ImageData) => subject$.next(imageData),
+			addExample: (classCode: number) => examples$.next(classCode),
 		},
-		parses$
+		...rest
 	}))
-	.map(({parses$, readerInterface}) => {
+	.map(({parses$, readerInterface, exampleProcessing$}) => {
 		const subscription = parses$.subscribe(({match, timeout}) => match ?
 			(({code, className, probability}: IPrelimResult) => onResults({
 				timeout,
@@ -102,9 +101,13 @@ export const createClassifier = (mobileNet: MobileNet, onResults: (result: IResu
 					code.location.bottomLeftCorner,
 				]}))(match) : onResults(false)
 		)
+		const exampleSubscription = exampleProcessing$.subscribe(() => {})
 		return {
 			...readerInterface,
-			unsubscribe: () => subscription.unsubscribe()
+			unsubscribe: () => {
+				subscription.unsubscribe()
+				exampleSubscription.unsubscribe()
+			}
 		}
 	})
 .some()

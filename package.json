@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "dependencies": {
+    "@tensorflow-models/knn-classifier": "^1.2.2",
     "@tensorflow-models/mobilenet": "^2.0.4",
     "@tensorflow/tfjs": "^2.0.1",
     "@tensorflow/tfjs-converter": "^2.0.1",
