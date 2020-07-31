@@ -1,6 +1,6 @@
 import { Maybe, Some } from "monet"
-import {Subject, combineLatest, zip, interval} from 'rxjs'
-import {map, scan, filter, mergeMap} from 'rxjs/operators/index'
+import {Subject, combineLatest, interval} from 'rxjs'
+import {map, scan, filter, mergeMap, withLatestFrom} from 'rxjs/operators/index'
 import { MobileNet } from "@tensorflow-models/mobilenet"
 import { createImageNetCore } from "./imageNetCore"
 
@@ -23,7 +23,7 @@ interface IMatchStats {firstMatch: number, lastMatch: number, match: IPrelimResu
 const timeoutSeconds = 5
 const lostHitUseLastTimeout = 500
 /** Minimum probability for considering the item a hit */
-const probabilityThreshold = 0.5
+const probabilityThreshold = 0.38
 
 /* Used as accumulator with scan to keep matches a short while after the algorithm ceases to see the code. This is useful to with a countdown. */
 export const keepLastHitWhenCloseInTime = (timeout: number, rightNow = () => +new Date()) =>
@@ -78,9 +78,10 @@ export const createClassifier = (mobileNet: MobileNet, onResults: (result: IResu
 			scan<IMatchStats & {timeout: number} & {duplicate?: boolean}>((acc, val) => ({...val, duplicate: acc.timeout === val.timeout})),
 			filter(val => !val.duplicate)
 		),
-		exampleProcessing$: zip(subject$, examples$)
+		exampleProcessing$: examples$
 			.pipe(
-				map(([frame, example]) => core.addExample(frame, example)))
+				withLatestFrom(subject$),
+				map(([example, frame]) => core.addExample(frame, example)))
 	}))
 	.map(({subject$, examples$, ...rest}) => ({
 		readerInterface: {
