@@ -27,6 +27,7 @@
   "scripts": {
     "start": "react-scripts start",
     "build": "react-scripts build",
+    "build:docker": "docker build -t tvedtorama/reclassify-model -t tvedtorama/reclassify-model:$(git describe --always --tags --dirty) .",
     "test": "react-scripts test",
     "eject": "react-scripts eject"
   },
