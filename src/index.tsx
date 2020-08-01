@@ -6,7 +6,7 @@ import * as serviceWorker from './serviceWorker';
 // Import @tensorflow/tfjs-core
 import '@tensorflow/tfjs-core';
 // Adds the WebGL backend to the global backend registry.
-import '@tensorflow/tfjs-backend-webgl';
+// import '@tensorflow/tfjs-backend-webgl';
 
 ReactDOM.render(
   <React.StrictMode>
